@@ -1,32 +1,32 @@
 import os
 import logging
-from telegram.ext import ApplicationBuilder, CommandHandler
-from telegram import Bot
+from telegram.ext import Application, CommandHandler
 
-# تنظیم لاگینگ برای عیب‌یابی در سرور
+# تنظیم لاگینگ
 logging.basicConfig(
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     level=logging.INFO
 )
 
 async def start(update, context):
     await update.message.reply_text("سلام! ربات فروشگاهی هوشمند شما فعال شد.")
 
-if __name__ == '__main__':
+def main():
     TOKEN = os.getenv("BOT_TOKEN")
-    print("🔍 BOT_TOKEN =", TOKEN)
-
+    
     if not TOKEN:
         raise ValueError("❌ BOT_TOKEN در Variables تنظیم نشده است!")
 
-    # پاک کردن Webhook قبل از شروع polling
-    bot = Bot(token=TOKEN)
-    # اینجا نیازی به await نیست چون run_polling خودش async را مدیریت می‌کند
-    bot.delete_webhook(drop_pending_updates=True)
-
     # ساخت اپلیکیشن
-    app = ApplicationBuilder().token(TOKEN).build()
-    app.add_handler(CommandHandler("start", start))
+    application = Application.builder().token(TOKEN).build()
+    
+    # اضافه کردن هندلر
+    application.add_handler(CommandHandler("start", start))
 
     print("✅ ربات با موفقیت استارت خورد...")
-    app.run_polling(allowed_updates=[])
+    
+    # این خط هم webhook رو پاک می‌کنه و هم polling رو شروع می‌کنه
+    application.run_polling(drop_pending_updates=True)
+
+if __name__ == "__main__":
+    main()
