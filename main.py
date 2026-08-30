@@ -15,6 +15,9 @@ if __name__ == '__main__':
     # خواندن توکن از Environment Variable در Railway
     TOKEN = os.getenv("BOT_TOKEN")
 
+    # چاپ مقدار توکن برای تست
+    print("🔍 BOT_TOKEN =", TOKEN)
+
     if not TOKEN:
         raise ValueError("❌ BOT_TOKEN در Variables تنظیم نشده است!")
 
