@@ -1,6 +1,7 @@
 import os
 import logging
 from telegram.ext import ApplicationBuilder, CommandHandler
+from telegram import Bot
 
 # تنظیم لاگینگ برای عیب‌یابی در سرور
 logging.basicConfig(
@@ -12,18 +13,20 @@ async def start(update, context):
     await update.message.reply_text("سلام! ربات فروشگاهی هوشمند شما فعال شد.")
 
 if __name__ == '__main__':
-    # خواندن توکن از Environment Variable در Railway
     TOKEN = os.getenv("BOT_TOKEN")
-
-    # چاپ مقدار توکن برای تست
     print("🔍 BOT_TOKEN =", TOKEN)
 
     if not TOKEN:
         raise ValueError("❌ BOT_TOKEN در Variables تنظیم نشده است!")
 
+    # پاک کردن Webhook قبل از شروع polling
+    bot = Bot(token=TOKEN)
+    bot.delete_webhook(drop_pending_updates=True)
+
+    # ساخت اپلیکیشن
     app = ApplicationBuilder().token(TOKEN).build()
     
     app.add_handler(CommandHandler("start", start))
     
     print("✅ ربات با موفقیت استارت خورد...")
-    app.run_polling()
+    app.run_polling(allowed_updates=[])
