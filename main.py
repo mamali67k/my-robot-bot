@@ -1,6 +1,5 @@
 import os
 import logging
-import asyncio
 from telegram.ext import ApplicationBuilder, CommandHandler
 from telegram import Bot
 
@@ -13,23 +12,21 @@ logging.basicConfig(
 async def start(update, context):
     await update.message.reply_text("سلام! ربات فروشگاهی هوشمند شما فعال شد.")
 
-async def main():
+if __name__ == '__main__':
     TOKEN = os.getenv("BOT_TOKEN")
     print("🔍 BOT_TOKEN =", TOKEN)
 
     if not TOKEN:
         raise ValueError("❌ BOT_TOKEN در Variables تنظیم نشده است!")
 
-    # پاک کردن Webhook به صورت async
+    # پاک کردن Webhook قبل از شروع polling
     bot = Bot(token=TOKEN)
-    await bot.delete_webhook(drop_pending_updates=True)
+    # اینجا نیازی به await نیست چون run_polling خودش async را مدیریت می‌کند
+    bot.delete_webhook(drop_pending_updates=True)
 
     # ساخت اپلیکیشن
     app = ApplicationBuilder().token(TOKEN).build()
     app.add_handler(CommandHandler("start", start))
 
     print("✅ ربات با موفقیت استارت خورد...")
-    await app.run_polling(allowed_updates=[])
-
-if __name__ == '__main__':
-    asyncio.run(main())
+    app.run_polling(allowed_updates=[])
