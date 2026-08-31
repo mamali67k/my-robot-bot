@@ -57,24 +57,23 @@ WELCOME_TEXT = """
 """
 
 def main_menu_keyboard():
-    keyboard = [
-        [InlineKeyboardButton("🛍 دسته‌بندی محصولات", callback_data="categories")],
-        [InlineKeyboardButton("📝 نقد و پیشنهاد", callback_data="feedback")],
-        [InlineKeyboardButton("⭐ باشگاه مشتریان", callback_data="club")],
-        [InlineKeyboardButton("ℹ️ درباره ما", callback_data="about")],
-    ]
+    keyboard = []
+
+    # دسته‌بندی‌ها مستقیماً در منوی اصلی
+    for cat_id, cat_data in CATEGORIES.items():
+        keyboard.append([
+            InlineKeyboardButton(cat_data["name"], callback_data=f"category_{cat_id}")
+        ])
+
+    # بقیه دکمه‌های اصلی
+    keyboard.append([InlineKeyboardButton("📝 نقد و پیشنهاد", callback_data="feedback")])
+    keyboard.append([InlineKeyboardButton("⭐ باشگاه مشتریان", callback_data="club")])
+    keyboard.append([InlineKeyboardButton("ℹ️ درباره ما", callback_data="about")])
+
     return InlineKeyboardMarkup(keyboard)
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(WELCOME_TEXT, reply_markup=main_menu_keyboard())
-
-async def show_categories(query):
-    text = "🛍 لطفاً دسته‌بندی مورد نظر خود را انتخاب کنید:"
-    keyboard = []
-    for cat_id, cat_data in CATEGORIES.items():
-        keyboard.append([InlineKeyboardButton(cat_data["name"], callback_data=f"category_{cat_id}")])
-    keyboard.append([InlineKeyboardButton("🔙 بازگشت به منوی اصلی", callback_data="back_main")])
-    await query.edit_message_text(text=text, reply_markup=InlineKeyboardMarkup(keyboard))
 
 async def show_products(query, category_id: str):
     category = CATEGORIES.get(category_id)
@@ -84,7 +83,7 @@ async def show_products(query, category_id: str):
 
     if not category["products"]:
         text = f"در حال حاضر محصولی در دسته‌بندی «{category['name']}» وجود ندارد."
-        keyboard = [[InlineKeyboardButton("🔙 بازگشت به دسته‌بندی‌ها", callback_data="categories")]]
+        keyboard = [[InlineKeyboardButton("🔙 بازگشت به منوی اصلی", callback_data="back_main")]]
         await query.edit_message_text(text=text, reply_markup=InlineKeyboardMarkup(keyboard))
         return
 
@@ -93,14 +92,13 @@ async def show_products(query, category_id: str):
     for product in category["products"]:
         price_text = f"{product['price']:,} تومان"
         button_text = f"{product['name']} | {price_text}"
-        # اینجا category_id را هم در callback نگه می‌داریم
         keyboard.append([
             InlineKeyboardButton(
-                button_text, 
+                button_text,
                 callback_data=f"product_{category_id}_{product['id']}"
             )
         ])
-    keyboard.append([InlineKeyboardButton("🔙 بازگشت به دسته‌بندی‌ها", callback_data="categories")])
+    keyboard.append([InlineKeyboardButton("🔙 بازگشت به منوی اصلی", callback_data="back_main")])
     await query.edit_message_text(text=text, reply_markup=InlineKeyboardMarkup(keyboard))
 
 async def show_product_detail(query, category_id: str, product_id: str):
@@ -124,7 +122,6 @@ async def show_product_detail(query, category_id: str, product_id: str):
 """
     keyboard = [
         [InlineKeyboardButton("🛒 افزودن به سبد خرید", callback_data=f"addcart_{product_id}")],
-        # دکمه بازگشت حالا به لیست محصولات همان دسته برمی‌گردد
         [InlineKeyboardButton("🔙 بازگشت به محصولات", callback_data=f"category_{category_id}")]
     ]
     await query.edit_message_text(text=text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
@@ -134,15 +131,11 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.answer()
     data = query.data
 
-    if data == "categories":
-        await show_categories(query)
-
-    elif data.startswith("category_"):
+    if data.startswith("category_"):
         category_id = data.replace("category_", "")
         await show_products(query, category_id)
 
     elif data.startswith("product_"):
-        # فرمت: product_{category_id}_{product_id}
         parts = data.split("_")
         if len(parts) == 3:
             category_id = parts[1]
