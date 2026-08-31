@@ -59,15 +59,26 @@ WELCOME_TEXT = """
 def main_menu_keyboard():
     keyboard = []
 
-    # دسته‌بندی‌ها مستقیماً در منوی اصلی
-    for cat_id, cat_data in CATEGORIES.items():
-        keyboard.append([
-            InlineKeyboardButton(cat_data["name"], callback_data=f"category_{cat_id}")
-        ])
+    # دسته‌بندی‌ها را دو تا دو تا در یک ردیف قرار می‌دهیم (افقی)
+    cat_items = list(CATEGORIES.items())
+    for i in range(0, len(cat_items), 2):
+        row = []
+        # دکمه اول
+        cat_id, cat_data = cat_items[i]
+        row.append(InlineKeyboardButton(cat_data["name"], callback_data=f"category_{cat_id}"))
+        
+        # دکمه دوم (اگر وجود داشته باشد)
+        if i + 1 < len(cat_items):
+            cat_id2, cat_data2 = cat_items[i + 1]
+            row.append(InlineKeyboardButton(cat_data2["name"], callback_data=f"category_{cat_id2}"))
+        
+        keyboard.append(row)
 
-    # بقیه دکمه‌های اصلی
-    keyboard.append([InlineKeyboardButton("📝 نقد و پیشنهاد", callback_data="feedback")])
-    keyboard.append([InlineKeyboardButton("⭐ باشگاه مشتریان", callback_data="club")])
+    # دکمه‌های پایین منو
+    keyboard.append([
+        InlineKeyboardButton("📝 نقد و پیشنهاد", callback_data="feedback"),
+        InlineKeyboardButton("⭐ باشگاه مشتریان", callback_data="club")
+    ])
     keyboard.append([InlineKeyboardButton("ℹ️ درباره ما", callback_data="about")])
 
     return InlineKeyboardMarkup(keyboard)
