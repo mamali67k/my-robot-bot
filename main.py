@@ -93,20 +93,23 @@ async def show_products(query, category_id: str):
     for product in category["products"]:
         price_text = f"{product['price']:,} تومان"
         button_text = f"{product['name']} | {price_text}"
-        keyboard.append([InlineKeyboardButton(button_text, callback_data=f"product_{product['id']}")])
+        # اینجا category_id را هم در callback نگه می‌داریم
+        keyboard.append([
+            InlineKeyboardButton(
+                button_text, 
+                callback_data=f"product_{category_id}_{product['id']}"
+            )
+        ])
     keyboard.append([InlineKeyboardButton("🔙 بازگشت به دسته‌بندی‌ها", callback_data="categories")])
     await query.edit_message_text(text=text, reply_markup=InlineKeyboardMarkup(keyboard))
 
-async def show_product_detail(query, product_id: str):
-    product = None
-    for cat in CATEGORIES.values():
-        for p in cat["products"]:
-            if p["id"] == product_id:
-                product = p
-                break
-        if product:
-            break
+async def show_product_detail(query, category_id: str, product_id: str):
+    category = CATEGORIES.get(category_id)
+    if not category:
+        await query.edit_message_text("❌ دسته‌بندی یافت نشد.")
+        return
 
+    product = next((p for p in category["products"] if p["id"] == product_id), None)
     if not product:
         await query.edit_message_text("❌ محصول یافت نشد.")
         return
@@ -121,7 +124,8 @@ async def show_product_detail(query, product_id: str):
 """
     keyboard = [
         [InlineKeyboardButton("🛒 افزودن به سبد خرید", callback_data=f"addcart_{product_id}")],
-        [InlineKeyboardButton("🔙 بازگشت", callback_data="categories")]
+        # دکمه بازگشت حالا به لیست محصولات همان دسته برمی‌گردد
+        [InlineKeyboardButton("🔙 بازگشت به محصولات", callback_data=f"category_{category_id}")]
     ]
     await query.edit_message_text(text=text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
 
@@ -132,24 +136,37 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if data == "categories":
         await show_categories(query)
+
     elif data.startswith("category_"):
-        await show_products(query, data.replace("category_", ""))
+        category_id = data.replace("category_", "")
+        await show_products(query, category_id)
+
     elif data.startswith("product_"):
-        await show_product_detail(query, data.replace("product_", ""))
+        # فرمت: product_{category_id}_{product_id}
+        parts = data.split("_")
+        if len(parts) == 3:
+            category_id = parts[1]
+            product_id = parts[2]
+            await show_product_detail(query, category_id, product_id)
+
     elif data == "feedback":
         text = "📝 لطفاً نقد یا پیشنهاد خود را بنویسید و ارسال کنید."
         keyboard = [[InlineKeyboardButton("🔙 بازگشت به منوی اصلی", callback_data="back_main")]]
         await query.edit_message_text(text=text, reply_markup=InlineKeyboardMarkup(keyboard))
+
     elif data == "club":
         text = "⭐ به باشگاه مشتریان خوش آمدید!\n\nامتیاز فعلی شما: ۰"
         keyboard = [[InlineKeyboardButton("🔙 بازگشت به منوی اصلی", callback_data="back_main")]]
         await query.edit_message_text(text=text, reply_markup=InlineKeyboardMarkup(keyboard))
+
     elif data == "about":
         text = "ℹ️ این ربات فروشگاهی با هدف ارائه بهترین محصولات طراحی شده است."
         keyboard = [[InlineKeyboardButton("🔙 بازگشت به منوی اصلی", callback_data="back_main")]]
         await query.edit_message_text(text=text, reply_markup=InlineKeyboardMarkup(keyboard))
+
     elif data == "back_main":
         await query.edit_message_text(WELCOME_TEXT, reply_markup=main_menu_keyboard())
+
     elif data.startswith("addcart_"):
         await query.answer("محصول به سبد خرید اضافه شد (به زودی کامل می‌شود)", show_alert=True)
 
@@ -183,7 +200,6 @@ async def main():
     await application.initialize()
     await application.start()
 
-    # تنظیم مجدد Webhook
     await application.bot.delete_webhook(drop_pending_updates=True)
     await application.bot.set_webhook(url=f"{WEBHOOK_URL}/webhook")
     logger.info("✅ Webhook با موفقیت تنظیم شد")
