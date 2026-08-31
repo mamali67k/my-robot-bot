@@ -11,6 +11,13 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# ============================================================
+# لیست ادمین‌ها
+# ============================================================
+ADMIN_IDS = [
+    1190530645,
+]
+
 # ---------------------- داده‌های محصولات ----------------------
 CATEGORIES = {
     "mobile": {
@@ -56,25 +63,22 @@ WELCOME_TEXT = """
 از منوی زیر می‌توانید بخش مورد نظر خود را انتخاب کنید.
 """
 
+def is_admin(user_id: int) -> bool:
+    return user_id in ADMIN_IDS
+
 def main_menu_keyboard():
     keyboard = []
 
-    # دسته‌بندی‌ها را دو تا دو تا در یک ردیف قرار می‌دهیم (افقی)
     cat_items = list(CATEGORIES.items())
     for i in range(0, len(cat_items), 2):
         row = []
-        # دکمه اول
         cat_id, cat_data = cat_items[i]
         row.append(InlineKeyboardButton(cat_data["name"], callback_data=f"category_{cat_id}"))
-        
-        # دکمه دوم (اگر وجود داشته باشد)
         if i + 1 < len(cat_items):
             cat_id2, cat_data2 = cat_items[i + 1]
             row.append(InlineKeyboardButton(cat_data2["name"], callback_data=f"category_{cat_id2}"))
-        
         keyboard.append(row)
 
-    # دکمه‌های پایین منو
     keyboard.append([
         InlineKeyboardButton("📝 نقد و پیشنهاد", callback_data="feedback"),
         InlineKeyboardButton("⭐ باشگاه مشتریان", callback_data="club")
@@ -83,8 +87,32 @@ def main_menu_keyboard():
 
     return InlineKeyboardMarkup(keyboard)
 
+def admin_menu_keyboard():
+    keyboard = [
+        [InlineKeyboardButton("➕ افزودن دسته‌بندی", callback_data="admin_add_category")],
+        [InlineKeyboardButton("📦 مدیریت محصولات", callback_data="admin_manage_products")],
+        [InlineKeyboardButton("👥 مدیریت ادمین‌ها", callback_data="admin_manage_admins")],
+        [InlineKeyboardButton("📊 آمار ربات", callback_data="admin_stats")],
+        [InlineKeyboardButton("🔙 بازگشت به منوی اصلی", callback_data="back_main")],
+    ]
+    return InlineKeyboardMarkup(keyboard)
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(WELCOME_TEXT, reply_markup=main_menu_keyboard())
+
+async def admin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+
+    if not is_admin(user_id):
+        await update.message.reply_text("❌ شما دسترسی به پنل مدیریت ندارید.")
+        return
+
+    text = """
+🛠️ **پنل مدیریت ربات**
+
+از منوی زیر بخش مورد نظر را انتخاب کنید.
+"""
+    await update.message.reply_text(text, reply_markup=admin_menu_keyboard(), parse_mode="Markdown")
 
 async def show_products(query, category_id: str):
     category = CATEGORIES.get(category_id)
@@ -141,6 +169,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     data = query.data
+    user_id = query.from_user.id
 
     if data.startswith("category_"):
         category_id = data.replace("category_", "")
@@ -174,6 +203,21 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif data.startswith("addcart_"):
         await query.answer("محصول به سبد خرید اضافه شد (به زودی کامل می‌شود)", show_alert=True)
 
+    # بخش ادمین
+    elif data.startswith("admin_"):
+        if not is_admin(user_id):
+            await query.answer("❌ دسترسی غیرمجاز", show_alert=True)
+            return
+
+        if data == "admin_add_category":
+            await query.edit_message_text("➕ بخش افزودن دسته‌بندی به زودی فعال می‌شود.", reply_markup=admin_menu_keyboard())
+        elif data == "admin_manage_products":
+            await query.edit_message_text("📦 بخش مدیریت محصولات به زودی فعال می‌شود.", reply_markup=admin_menu_keyboard())
+        elif data == "admin_manage_admins":
+            await query.edit_message_text("👥 بخش مدیریت ادمین‌ها به زودی فعال می‌شود.", reply_markup=admin_menu_keyboard())
+        elif data == "admin_stats":
+            await query.edit_message_text("📊 بخش آمار به زودی فعال می‌شود.", reply_markup=admin_menu_keyboard())
+
 async def health(request):
     return web.Response(text="Bot is alive ✅", status=200)
 
@@ -199,6 +243,7 @@ async def main():
 
     application = Application.builder().token(TOKEN).build()
     application.add_handler(CommandHandler("start", start))
+    application.add_handler(CommandHandler("admin", admin_command))
     application.add_handler(CallbackQueryHandler(button_handler))
 
     await application.initialize()
