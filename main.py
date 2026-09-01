@@ -108,12 +108,10 @@ def get_categories():
     return load_products().get("categories", {})
 
 def get_root_categories():
-    """دسته‌بندی‌های سطح ۱"""
     cats = get_categories()
     return {k: v for k, v in cats.items() if v.get("level") == 1}
 
 def get_children(parent_id):
-    """زیر‌دسته‌های یک دسته"""
     cats = get_categories()
     return {k: v for k, v in cats.items() if v.get("parent") == parent_id}
 
@@ -171,7 +169,6 @@ async def admin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("🛠️ **پنل مدیریت**", reply_markup=admin_menu_keyboard(), parse_mode="Markdown")
 
 async def show_category(query, cat_id):
-    """نمایش زیر‌دسته‌ها یا محصولات یک دسته"""
     user_id = query.from_user.id
     upgrade_user_level(user_id, 2)
 
@@ -187,15 +184,11 @@ async def show_category(query, cat_id):
     text = f"📂 {category['name']}\n\n"
     keyboard = []
 
-    # نمایش زیر‌دسته‌ها
     if children:
-        text += "زیر‌دسته‌بندی‌ها:\n"
         for cid, cdata in children.items():
             keyboard.append([InlineKeyboardButton(f"📁 {cdata['name']}", callback_data=f"cat_{cid}")])
 
-    # نمایش محصولات
     if products:
-        text += "\nمحصولات:\n"
         for p in products:
             btn = f"{p['name']} | {p['price']:,} تومان"
             keyboard.append([InlineKeyboardButton(btn, callback_data=f"product_{cat_id}_{p['id']}")])
@@ -203,7 +196,6 @@ async def show_category(query, cat_id):
     if not children and not products:
         text += "هنوز موردی اضافه نشده است."
 
-    # دکمه بازگشت
     parent = category.get("parent")
     if parent:
         keyboard.append([InlineKeyboardButton("🔙 بازگشت", callback_data=f"cat_{parent}")])
@@ -236,7 +228,12 @@ async def show_product_detail(query, cat_id, product_id):
     ]
 
     if product.get("photo"):
-        await query.message.reply_photo(photo=product["photo"], caption=text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
+        await query.message.reply_photo(
+            photo=product["photo"],
+            caption=text,
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode="Markdown"
+        )
         await query.delete_message()
     else:
         await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
@@ -252,7 +249,11 @@ async def show_stats(query):
 🔶 بالقوه: {stats['level_1']}
 ⭐ VIP: {stats['vip']}
 """
-    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="admin_back")]]), parse_mode="Markdown")
+    await query.edit_message_text(
+        text,
+        reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="admin_back")]]),
+        parse_mode="Markdown"
+    )
 
 # ---------- پیام‌های ادمین ----------
 async def handle_admin_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -262,7 +263,6 @@ async def handle_admin_message(update: Update, context: ContextTypes.DEFAULT_TYP
     state = context.user_data.get("admin_state")
     text = update.message.text
 
-    # ساخت دسته‌بندی سطح ۱
     if state == "waiting_cat1_name":
         data = load_products()
         cat_id = f"c1_{int(datetime.now().timestamp())}"
@@ -277,12 +277,12 @@ async def handle_admin_message(update: Update, context: ContextTypes.DEFAULT_TYP
         await update.message.reply_text(f"✅ دسته‌بندی سطح ۱ «{text}» ساخته شد.", reply_markup=admin_menu_keyboard())
         return
 
-    # ساخت زیر‌دسته (سطح ۲ یا ۳)
     if state == "waiting_sub_name":
         parent_id = context.user_data.get("parent_for_sub")
         parent = get_categories().get(parent_id)
         if not parent:
             await update.message.reply_text("خطا: دسته والد یافت نشد.")
+            context.user_data.clear()
             return
 
         new_level = parent["level"] + 1
@@ -304,7 +304,6 @@ async def handle_admin_message(update: Update, context: ContextTypes.DEFAULT_TYP
         await update.message.reply_text(f"✅ زیر‌دسته‌بندی سطح {new_level} «{text}» ساخته شد.", reply_markup=admin_menu_keyboard())
         return
 
-    # مراحل افزودن محصول
     if state == "waiting_product_name":
         context.user_data["new_product"] = {"name": text}
         context.user_data["admin_state"] = "waiting_product_price"
@@ -373,13 +372,16 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await show_product_detail(query, parts[1], parts[2])
 
     elif data == "feedback":
-        await query.edit_message_text("📝 نقد یا پیشنهاد خود را بنویسید.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back_main")]]))
+        await query.edit_message_text("📝 نقد یا پیشنهاد خود را بنویسید.", 
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back_main")]]))
 
     elif data == "club":
-        await query.edit_message_text("⭐ باشگاه مشتریان\nامتیاز: ۰", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back_main")]]))
+        await query.edit_message_text("⭐ باشگاه مشتریان\nامتیاز: ۰", 
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back_main")]]))
 
     elif data == "about":
-        await query.edit_message_text("ℹ️ ربات فروشگاهی", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back_main")]]))
+        await query.edit_message_text("ℹ️ ربات فروشگاهی", 
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back_main")]]))
 
     elif data == "back_main":
         context.user_data.clear()
@@ -388,41 +390,82 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif data.startswith("addcart_"):
         await query.answer("به سبد اضافه شد", show_alert=True)
 
-    # ادمین
-    elif data.startswith("admin_") or data == "admin_back":
+    # ==================== بخش ادمین ====================
+    elif data.startswith("admin_") or data.startswith("subparent_") or data.startswith("prodcat_") or data == "admin_back":
         if not is_admin(user_id):
             await query.answer("غیرمجاز", show_alert=True)
             return
 
         if data == "admin_stats":
             await show_stats(query)
+
         elif data == "admin_back":
             context.user_data.clear()
             await query.edit_message_text("🛠️ پنل مدیریت", reply_markup=admin_menu_keyboard())
+
         elif data == "admin_add_cat1":
             context.user_data["admin_state"] = "waiting_cat1_name"
             await query.edit_message_text("➕ نام دسته‌بندی سطح ۱ را بفرستید:")
+
         elif data == "admin_add_sub":
-            # انتخاب والد برای زیر‌دسته
             cats = get_categories()
+            # فقط دسته‌هایی که سطح کمتر از ۳ دارند می‌توانند زیر‌دسته داشته باشند
+            possible_parents = {k: v for k, v in cats.items() if v.get("level", 1) < 3}
+
+            if not possible_parents:
+                await query.edit_message_text(
+                    "❌ هنوز هیچ دسته‌بندی سطح ۱ وجود ندارد.\n\nابتدا یک دسته‌بندی سطح ۱ بسازید.",
+                    reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="admin_back")]])
+                )
+                return
+
             keyboard = []
-            for cid, cdata in cats.items():
-                if cdata["level"] < 3:
-                    keyboard.append([InlineKeyboardButton(f"{'—'*(cdata['level']-1)} {cdata['name']} (سطح {cdata['level']})", callback_data=f"subparent_{cid}")])
+            for cid, cdata in possible_parents.items():
+                level = cdata.get("level", 1)
+                prefix = "—" * (level - 1)
+                keyboard.append([
+                    InlineKeyboardButton(
+                        f"{prefix} {cdata['name']} (سطح {level})",
+                        callback_data=f"subparent_{cid}"
+                    )
+                ])
             keyboard.append([InlineKeyboardButton("❌ لغو", callback_data="admin_back")])
-            await query.edit_message_text("📂 دسته‌بندی والد را انتخاب کنید:", reply_markup=InlineKeyboardMarkup(keyboard))
+            await query.edit_message_text(
+                "📂 دسته‌بندی والد را انتخاب کنید:",
+                reply_markup=InlineKeyboardMarkup(keyboard)
+            )
+
         elif data.startswith("subparent_"):
             parent_id = data.replace("subparent_", "")
             context.user_data["parent_for_sub"] = parent_id
             context.user_data["admin_state"] = "waiting_sub_name"
             await query.edit_message_text("📝 نام زیر‌دسته‌بندی را بفرستید:")
+
         elif data == "admin_add_product":
             cats = get_categories()
+            if not cats:
+                await query.edit_message_text(
+                    "❌ هنوز هیچ دسته‌بندی وجود ندارد.\nابتدا دسته‌بندی بسازید.",
+                    reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="admin_back")]])
+                )
+                return
+
             keyboard = []
             for cid, cdata in cats.items():
-                keyboard.append([InlineKeyboardButton(f"{'—'* (cdata['level']-1)} {cdata['name']}", callback_data=f"prodcat_{cid}")])
+                level = cdata.get("level", 1)
+                prefix = "—" * (level - 1)
+                keyboard.append([
+                    InlineKeyboardButton(
+                        f"{prefix} {cdata['name']} (سطح {level})",
+                        callback_data=f"prodcat_{cid}"
+                    )
+                ])
             keyboard.append([InlineKeyboardButton("❌ لغو", callback_data="admin_back")])
-            await query.edit_message_text("🛒 دسته‌بندی محصول را انتخاب کنید:", reply_markup=InlineKeyboardMarkup(keyboard))
+            await query.edit_message_text(
+                "🛒 دسته‌بندی محصول را انتخاب کنید:",
+                reply_markup=InlineKeyboardMarkup(keyboard)
+            )
+
         elif data.startswith("prodcat_"):
             cat_id = data.replace("prodcat_", "")
             context.user_data["product_category"] = cat_id
