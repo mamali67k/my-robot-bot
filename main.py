@@ -23,11 +23,10 @@ def get_admin_ids():
     raw = os.getenv("ADMIN_IDS", "1190530645")
     try:
         return [int(x.strip()) for x in raw.split(",") if x.strip()]
-    except ValueError:
+    except:
         return []
 
 ADMIN_IDS = get_admin_ids()
-
 USERS_FILE = "users.json"
 PRODUCTS_FILE = "products.json"
 
@@ -55,8 +54,6 @@ def get_or_create_user(user_id, username=None, full_name=None):
             "user_id": user_id,
             "username": username,
             "full_name": full_name,
-            "phone": None,
-            "address": None,
             "level": 3,
             "first_seen": datetime.now().isoformat(),
             "last_seen": datetime.now().isoformat(),
@@ -65,8 +62,6 @@ def get_or_create_user(user_id, username=None, full_name=None):
         save_users(users)
     else:
         users[uid]["last_seen"] = datetime.now().isoformat()
-        if username:
-            users[uid]["username"] = username
         save_users(users)
     return users[uid]
 
@@ -76,16 +71,8 @@ def upgrade_user_level(user_id, new_level):
     if uid not in users:
         return
     order = {3: 0, 2: 1, 1: 2, "vip": 3}
-    current = users[uid]["level"]
-    if order.get(new_level, -1) > order.get(current, -1):
+    if order.get(new_level, -1) > order.get(users[uid]["level"], -1):
         users[uid]["level"] = new_level
-        save_users(users)
-
-def add_category_viewed(user_id, category_id):
-    users = load_users()
-    uid = str(user_id)
-    if uid in users and category_id not in users[uid]["categories_viewed"]:
-        users[uid]["categories_viewed"].append(category_id)
         save_users(users)
 
 def get_stats():
@@ -100,29 +87,11 @@ def get_stats():
     return stats
 
 # ============================================================
-# مدیریت محصولات
+# مدیریت محصولات (۳ سطحی)
 # ============================================================
 def load_products():
     if not os.path.exists(PRODUCTS_FILE):
-        default = {
-            "categories": {
-                "mobile": {
-                    "name": "📱 موبایل و لوازم جانبی",
-                    "parent": None,
-                    "products": []
-                },
-                "laptop": {
-                    "name": "💻 لپ‌تاپ و کامپیوتر",
-                    "parent": None,
-                    "products": []
-                },
-                "home": {
-                    "name": "🏠 لوازم خانگی",
-                    "parent": None,
-                    "products": []
-                }
-            }
-        }
+        default = {"categories": {}}
         save_products(default)
         return default
     try:
@@ -138,6 +107,16 @@ def save_products(data):
 def get_categories():
     return load_products().get("categories", {})
 
+def get_root_categories():
+    """دسته‌بندی‌های سطح ۱"""
+    cats = get_categories()
+    return {k: v for k, v in cats.items() if v.get("level") == 1}
+
+def get_children(parent_id):
+    """زیر‌دسته‌های یک دسته"""
+    cats = get_categories()
+    return {k: v for k, v in cats.items() if v.get("parent") == parent_id}
+
 # ============================================================
 # کیبوردها
 # ============================================================
@@ -145,17 +124,18 @@ def is_admin(user_id):
     return user_id in ADMIN_IDS
 
 def main_menu_keyboard():
-    cats = get_categories()
+    roots = get_root_categories()
     keyboard = []
-    items = list(cats.items())
+    items = list(roots.items())
     for i in range(0, len(items), 2):
         row = []
         cid, cdata = items[i]
-        row.append(InlineKeyboardButton(cdata["name"], callback_data=f"category_{cid}"))
+        row.append(InlineKeyboardButton(cdata["name"], callback_data=f"cat_{cid}"))
         if i + 1 < len(items):
             cid2, cdata2 = items[i + 1]
-            row.append(InlineKeyboardButton(cdata2["name"], callback_data=f"category_{cid2}"))
+            row.append(InlineKeyboardButton(cdata2["name"], callback_data=f"cat_{cid2}"))
         keyboard.append(row)
+
     keyboard.append([
         InlineKeyboardButton("📝 نقد و پیشنهاد", callback_data="feedback"),
         InlineKeyboardButton("⭐ باشگاه مشتریان", callback_data="club")
@@ -165,20 +145,12 @@ def main_menu_keyboard():
 
 def admin_menu_keyboard():
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton("➕ افزودن دسته‌بندی", callback_data="admin_add_category")],
+        [InlineKeyboardButton("➕ افزودن دسته‌بندی سطح ۱", callback_data="admin_add_cat1")],
+        [InlineKeyboardButton("📂 افزودن زیر‌دسته (سطح ۲ یا ۳)", callback_data="admin_add_sub")],
         [InlineKeyboardButton("🛒 افزودن محصول", callback_data="admin_add_product")],
-        [InlineKeyboardButton("📦 مدیریت محصولات", callback_data="admin_manage_products")],
         [InlineKeyboardButton("📊 آمار مشتریان", callback_data="admin_stats")],
         [InlineKeyboardButton("🔙 بازگشت", callback_data="back_main")]
     ])
-
-def choose_category_keyboard():
-    cats = get_categories()
-    keyboard = []
-    for cid, cdata in cats.items():
-        keyboard.append([InlineKeyboardButton(cdata["name"], callback_data=f"addprod_cat_{cid}")])
-    keyboard.append([InlineKeyboardButton("❌ لغو", callback_data="admin_back")])
-    return InlineKeyboardMarkup(keyboard)
 
 # ============================================================
 # هندلرها
@@ -187,7 +159,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     get_or_create_user(user.id, user.username, user.full_name)
     await update.message.reply_text(
-        "سلام به ربات فروشگاهی ما خوش آمدید! 👋\n\nاز منوی زیر انتخاب کنید:",
+        "سلام به ربات فروشگاهی خوش آمدید! 👋\n\nاز منوی زیر انتخاب کنید:",
         reply_markup=main_menu_keyboard()
     )
 
@@ -196,45 +168,57 @@ async def admin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("دستور نامعتبر است.")
         return
     context.user_data.clear()
-    await update.message.reply_text(
-        "🛠️ **پنل مدیریت**",
-        reply_markup=admin_menu_keyboard(),
-        parse_mode="Markdown"
-    )
+    await update.message.reply_text("🛠️ **پنل مدیریت**", reply_markup=admin_menu_keyboard(), parse_mode="Markdown")
 
-async def show_products(query, category_id):
+async def show_category(query, cat_id):
+    """نمایش زیر‌دسته‌ها یا محصولات یک دسته"""
     user_id = query.from_user.id
     upgrade_user_level(user_id, 2)
-    add_category_viewed(user_id, category_id)
 
     cats = get_categories()
-    category = cats.get(category_id)
+    category = cats.get(cat_id)
     if not category:
         await query.edit_message_text("دسته‌بندی یافت نشد.")
         return
 
+    children = get_children(cat_id)
     products = category.get("products", [])
-    if not products:
-        text = f"محصولی در «{category['name']}» وجود ندارد."
-        keyboard = [[InlineKeyboardButton("🔙 بازگشت", callback_data="back_main")]]
-        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
-        return
 
-    text = f"محصولات «{category['name']}»:\n\n"
+    text = f"📂 {category['name']}\n\n"
     keyboard = []
-    for p in products:
-        btn = f"{p['name']} | {p['price']:,} تومان"
-        keyboard.append([InlineKeyboardButton(btn, callback_data=f"product_{category_id}_{p['id']}")])
-    keyboard.append([InlineKeyboardButton("🔙 بازگشت", callback_data="back_main")])
+
+    # نمایش زیر‌دسته‌ها
+    if children:
+        text += "زیر‌دسته‌بندی‌ها:\n"
+        for cid, cdata in children.items():
+            keyboard.append([InlineKeyboardButton(f"📁 {cdata['name']}", callback_data=f"cat_{cid}")])
+
+    # نمایش محصولات
+    if products:
+        text += "\nمحصولات:\n"
+        for p in products:
+            btn = f"{p['name']} | {p['price']:,} تومان"
+            keyboard.append([InlineKeyboardButton(btn, callback_data=f"product_{cat_id}_{p['id']}")])
+
+    if not children and not products:
+        text += "هنوز موردی اضافه نشده است."
+
+    # دکمه بازگشت
+    parent = category.get("parent")
+    if parent:
+        keyboard.append([InlineKeyboardButton("🔙 بازگشت", callback_data=f"cat_{parent}")])
+    else:
+        keyboard.append([InlineKeyboardButton("🔙 منوی اصلی", callback_data="back_main")])
+
     await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
 
-async def show_product_detail(query, category_id, product_id):
+async def show_product_detail(query, cat_id, product_id):
     cats = get_categories()
-    category = cats.get(category_id)
+    category = cats.get(cat_id)
     if not category:
         await query.edit_message_text("یافت نشد.")
         return
-    product = next((p for p in category["products"] if p["id"] == product_id), None)
+    product = next((p for p in category.get("products", []) if p["id"] == product_id), None)
     if not product:
         await query.edit_message_text("محصول یافت نشد.")
         return
@@ -244,20 +228,15 @@ async def show_product_detail(query, category_id, product_id):
 
 💰 قیمت: {product['price']:,} تومان
 
-📝 {product['description']}
+📝 {product.get('description', '')}
 """
     keyboard = [
         [InlineKeyboardButton("🛒 افزودن به سبد", callback_data=f"addcart_{product_id}")],
-        [InlineKeyboardButton("🔙 بازگشت", callback_data=f"category_{category_id}")]
+        [InlineKeyboardButton("🔙 بازگشت", callback_data=f"cat_{cat_id}")]
     ]
 
     if product.get("photo"):
-        await query.message.reply_photo(
-            photo=product["photo"],
-            caption=text,
-            reply_markup=InlineKeyboardMarkup(keyboard),
-            parse_mode="Markdown"
-        )
+        await query.message.reply_photo(photo=product["photo"], caption=text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
         await query.delete_message()
     else:
         await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
@@ -268,65 +247,89 @@ async def show_stats(query):
 📊 **آمار مشتریان**
 
 👥 کل: {stats['total']}
-🔹 عادی (۳): {stats['level_3']}
-🔸 علاقه‌مند (۲): {stats['level_2']}
-🔶 بالقوه (۱): {stats['level_1']}
+🔹 عادی: {stats['level_3']}
+🔸 علاقه‌مند: {stats['level_2']}
+🔶 بالقوه: {stats['level_1']}
 ⭐ VIP: {stats['vip']}
 """
-    keyboard = [[InlineKeyboardButton("🔙 بازگشت", callback_data="admin_back")]]
-    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
+    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="admin_back")]]), parse_mode="Markdown")
 
-# ---------- افزودن محصول (چند مرحله‌ای) ----------
+# ---------- پیام‌های ادمین ----------
 async def handle_admin_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_admin(update.effective_user.id):
         return
 
     state = context.user_data.get("admin_state")
-    text = update.message.text if update.message.text else None
+    text = update.message.text
 
-    # مرحله ۱: نام دسته‌بندی جدید
-    if state == "waiting_category_name":
+    # ساخت دسته‌بندی سطح ۱
+    if state == "waiting_cat1_name":
         data = load_products()
-        cat_id = f"cat_{int(datetime.now().timestamp())}"
+        cat_id = f"c1_{int(datetime.now().timestamp())}"
         data["categories"][cat_id] = {
             "name": text,
+            "level": 1,
             "parent": None,
             "products": []
         }
         save_products(data)
         context.user_data.clear()
-        await update.message.reply_text(f"✅ دسته‌بندی «{text}» ساخته شد.", reply_markup=admin_menu_keyboard())
+        await update.message.reply_text(f"✅ دسته‌بندی سطح ۱ «{text}» ساخته شد.", reply_markup=admin_menu_keyboard())
         return
 
-    # مرحله‌های افزودن محصول
+    # ساخت زیر‌دسته (سطح ۲ یا ۳)
+    if state == "waiting_sub_name":
+        parent_id = context.user_data.get("parent_for_sub")
+        parent = get_categories().get(parent_id)
+        if not parent:
+            await update.message.reply_text("خطا: دسته والد یافت نشد.")
+            return
+
+        new_level = parent["level"] + 1
+        if new_level > 3:
+            await update.message.reply_text("❌ حداکثر ۳ سطح مجاز است.")
+            context.user_data.clear()
+            return
+
+        data = load_products()
+        cat_id = f"c{new_level}_{int(datetime.now().timestamp())}"
+        data["categories"][cat_id] = {
+            "name": text,
+            "level": new_level,
+            "parent": parent_id,
+            "products": []
+        }
+        save_products(data)
+        context.user_data.clear()
+        await update.message.reply_text(f"✅ زیر‌دسته‌بندی سطح {new_level} «{text}» ساخته شد.", reply_markup=admin_menu_keyboard())
+        return
+
+    # مراحل افزودن محصول
     if state == "waiting_product_name":
         context.user_data["new_product"] = {"name": text}
         context.user_data["admin_state"] = "waiting_product_price"
-        await update.message.reply_text("💰 قیمت محصول را به تومان وارد کنید (فقط عدد):")
+        await update.message.reply_text("💰 قیمت را به تومان وارد کنید (فقط عدد):")
         return
 
     if state == "waiting_product_price":
         try:
             price = int(text.replace(",", "").replace("،", "").strip())
             context.user_data["new_product"]["price"] = price
-            context.user_data["admin_state"] = "waiting_product_description"
+            context.user_data["admin_state"] = "waiting_product_desc"
             await update.message.reply_text("📝 توضیحات محصول را بنویسید:")
         except:
-            await update.message.reply_text("❌ قیمت نامعتبر است. فقط عدد وارد کنید:")
+            await update.message.reply_text("❌ فقط عدد وارد کنید:")
         return
 
-    if state == "waiting_product_description":
+    if state == "waiting_product_desc":
         context.user_data["new_product"]["description"] = text
         context.user_data["admin_state"] = "waiting_product_photo"
-        await update.message.reply_text("🖼 عکس محصول را ارسال کنید:\n(یا بنویسید «بدون عکس»)")
+        await update.message.reply_text("🖼 عکس محصول را بفرستید یا بنویسید «بدون عکس»:")
         return
 
-    if state == "waiting_product_photo":
-        if text and "بدون عکس" in text:
-            context.user_data["new_product"]["photo"] = None
-            await save_new_product(update, context)
-        else:
-            await update.message.reply_text("لطفاً یک عکس ارسال کنید یا بنویسید «بدون عکس»")
+    if state == "waiting_product_photo" and text and "بدون عکس" in text:
+        context.user_data["new_product"]["photo"] = None
+        await finish_add_product(update, context)
 
 async def handle_admin_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_admin(update.effective_user.id):
@@ -336,29 +339,24 @@ async def handle_admin_photo(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
     photo = update.message.photo[-1]
     context.user_data["new_product"]["photo"] = photo.file_id
-    await save_new_product(update, context)
+    await finish_add_product(update, context)
 
-async def save_new_product(update, context):
-    product_data = context.user_data.get("new_product")
-    category_id = context.user_data.get("add_product_category")
+async def finish_add_product(update, context):
+    product = context.user_data.get("new_product")
+    cat_id = context.user_data.get("product_category")
 
-    if not product_data or not category_id:
-        await update.message.reply_text("خطا در ذخیره محصول.")
+    if not product or not cat_id:
+        await update.message.reply_text("خطا در ذخیره.")
         context.user_data.clear()
         return
 
     data = load_products()
-    product_id = f"p{int(datetime.now().timestamp())}"
-    product_data["id"] = product_id
-
-    data["categories"][category_id]["products"].append(product_data)
+    product["id"] = f"p{int(datetime.now().timestamp())}"
+    data["categories"][cat_id]["products"].append(product)
     save_products(data)
 
     context.user_data.clear()
-    await update.message.reply_text(
-        f"✅ محصول «{product_data['name']}» با موفقیت اضافه شد.",
-        reply_markup=admin_menu_keyboard()
-    )
+    await update.message.reply_text(f"✅ محصول «{product['name']}» اضافه شد.", reply_markup=admin_menu_keyboard())
 
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -366,8 +364,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     data = query.data
     user_id = query.from_user.id
 
-    if data.startswith("category_"):
-        await show_products(query, data.replace("category_", ""))
+    if data.startswith("cat_"):
+        await show_category(query, data.replace("cat_", ""))
 
     elif data.startswith("product_"):
         parts = data.split("_")
@@ -375,60 +373,65 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await show_product_detail(query, parts[1], parts[2])
 
     elif data == "feedback":
-        await query.edit_message_text("📝 نقد یا پیشنهاد خود را بنویسید.", 
-            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back_main")]]))
+        await query.edit_message_text("📝 نقد یا پیشنهاد خود را بنویسید.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back_main")]]))
 
     elif data == "club":
-        await query.edit_message_text("⭐ باشگاه مشتریان\nامتیاز شما: ۰", 
-            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back_main")]]))
+        await query.edit_message_text("⭐ باشگاه مشتریان\nامتیاز: ۰", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back_main")]]))
 
     elif data == "about":
-        await query.edit_message_text("ℹ️ ربات فروشگاهی هوشمند", 
-            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back_main")]]))
+        await query.edit_message_text("ℹ️ ربات فروشگاهی", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back_main")]]))
 
     elif data == "back_main":
         context.user_data.clear()
         await query.edit_message_text("منوی اصلی:", reply_markup=main_menu_keyboard())
 
     elif data.startswith("addcart_"):
-        await query.answer("به سبد اضافه شد (به زودی کامل می‌شود)", show_alert=True)
+        await query.answer("به سبد اضافه شد", show_alert=True)
 
     # ادمین
-    elif data.startswith("admin_") or data.startswith("addprod_") or data == "admin_back":
+    elif data.startswith("admin_") or data == "admin_back":
         if not is_admin(user_id):
-            await query.answer("دسترسی غیرمجاز", show_alert=True)
+            await query.answer("غیرمجاز", show_alert=True)
             return
 
         if data == "admin_stats":
             await show_stats(query)
-
         elif data == "admin_back":
             context.user_data.clear()
             await query.edit_message_text("🛠️ پنل مدیریت", reply_markup=admin_menu_keyboard())
-
-        elif data == "admin_add_category":
-            context.user_data["admin_state"] = "waiting_category_name"
-            await query.edit_message_text("➕ نام دسته‌بندی جدید را بفرستید:\n(لغو: /cancel)")
-
+        elif data == "admin_add_cat1":
+            context.user_data["admin_state"] = "waiting_cat1_name"
+            await query.edit_message_text("➕ نام دسته‌بندی سطح ۱ را بفرستید:")
+        elif data == "admin_add_sub":
+            # انتخاب والد برای زیر‌دسته
+            cats = get_categories()
+            keyboard = []
+            for cid, cdata in cats.items():
+                if cdata["level"] < 3:
+                    keyboard.append([InlineKeyboardButton(f"{'—'*(cdata['level']-1)} {cdata['name']} (سطح {cdata['level']})", callback_data=f"subparent_{cid}")])
+            keyboard.append([InlineKeyboardButton("❌ لغو", callback_data="admin_back")])
+            await query.edit_message_text("📂 دسته‌بندی والد را انتخاب کنید:", reply_markup=InlineKeyboardMarkup(keyboard))
+        elif data.startswith("subparent_"):
+            parent_id = data.replace("subparent_", "")
+            context.user_data["parent_for_sub"] = parent_id
+            context.user_data["admin_state"] = "waiting_sub_name"
+            await query.edit_message_text("📝 نام زیر‌دسته‌بندی را بفرستید:")
         elif data == "admin_add_product":
-            await query.edit_message_text(
-                "🛒 ابتدا دسته‌بندی مورد نظر را انتخاب کنید:",
-                reply_markup=choose_category_keyboard()
-            )
-
-        elif data.startswith("addprod_cat_"):
-            cat_id = data.replace("addprod_cat_", "")
-            context.user_data["add_product_category"] = cat_id
+            cats = get_categories()
+            keyboard = []
+            for cid, cdata in cats.items():
+                keyboard.append([InlineKeyboardButton(f"{'—'* (cdata['level']-1)} {cdata['name']}", callback_data=f"prodcat_{cid}")])
+            keyboard.append([InlineKeyboardButton("❌ لغو", callback_data="admin_back")])
+            await query.edit_message_text("🛒 دسته‌بندی محصول را انتخاب کنید:", reply_markup=InlineKeyboardMarkup(keyboard))
+        elif data.startswith("prodcat_"):
+            cat_id = data.replace("prodcat_", "")
+            context.user_data["product_category"] = cat_id
             context.user_data["admin_state"] = "waiting_product_name"
             await query.edit_message_text("📝 نام محصول را وارد کنید:")
 
-        elif data == "admin_manage_products":
-            await query.edit_message_text("📦 بخش حذف و ویرایش محصولات به زودی اضافه می‌شود.", 
-                reply_markup=admin_menu_keyboard())
-
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data.clear()
-    await update.message.reply_text("عملیات لغو شد.", reply_markup=admin_menu_keyboard())
+    await update.message.reply_text("لغو شد.", reply_markup=admin_menu_keyboard())
 
 # ============================================================
 # سرور
@@ -443,7 +446,7 @@ async def telegram_webhook(request):
         await application.process_update(update)
         return web.Response(status=200)
     except Exception as e:
-        logger.exception("Webhook error")
+        logger.exception("error")
         return web.Response(status=500)
 
 async def main():
@@ -453,7 +456,6 @@ async def main():
     PORT = int(os.getenv("PORT", 8080))
 
     application = Application.builder().token(TOKEN).build()
-
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("admin", admin_command))
     application.add_handler(CommandHandler("cancel", cancel))
@@ -474,7 +476,7 @@ async def main():
     runner = web.AppRunner(app)
     await runner.setup()
     await web.TCPSite(runner, "0.0.0.0", PORT).start()
-    logger.info("Bot started successfully")
+    logger.info("Bot started")
     await asyncio.Event().wait()
 
 if __name__ == "__main__":
